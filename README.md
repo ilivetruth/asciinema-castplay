@@ -33,7 +33,7 @@ Go is only needed to build. The resulting binary has no runtime dependencies.
 ## Build
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/castplay.git
+git clone https://github.com/ilivetruth/asciinema-castplay.git
 cd castplay
 go build -o castplay .
 ./castplay path/to/recording.cast
