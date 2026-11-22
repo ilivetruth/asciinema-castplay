@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Used by the .desktop launcher: lets the terminal window settle at its final size, then plays.
+sleep 0.3
+exec "$(dirname "$0")/castplay" "$1"
