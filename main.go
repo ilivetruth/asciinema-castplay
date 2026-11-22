@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -13,6 +15,34 @@ import (
 type event struct {
 	t float64
 	d string
+}
+
+// Terminal modes that would hijack the mouse or focus events from the
+// real terminal. They are removed from the recorded output so text
+// selection keeps working during playback.
+var modeRe = regexp.MustCompile(`\x1b\[\?([0-9;]+)([hl])`)
+var dropModes = map[string]bool{
+	"9": true, "1000": true, "1001": true, "1002": true, "1003": true,
+	"1004": true, "1005": true, "1006": true, "1015": true, "1016": true,
+}
+
+func stripModes(s string) string {
+	if !strings.Contains(s, "\x1b[?") {
+		return s
+	}
+	return modeRe.ReplaceAllStringFunc(s, func(m string) string {
+		sub := modeRe.FindStringSubmatch(m)
+		var keep []string
+		for _, p := range strings.Split(sub[1], ";") {
+			if !dropModes[p] {
+				keep = append(keep, p)
+			}
+		}
+		if len(keep) == 0 {
+			return ""
+		}
+		return "\x1b[?" + strings.Join(keep, ";") + sub[2]
+	})
 }
 
 func load(path string) ([]event, float64) {
@@ -46,7 +76,7 @@ func load(path string) ([]event, float64) {
 		}
 		if k, _ := e[1].(string); k == "o" {
 			s, _ := e[2].(string)
-			ev = append(ev, event{t, s})
+			ev = append(ev, event{t, stripModes(s)})
 		}
 	}
 	return ev, t
@@ -90,6 +120,7 @@ func main() {
 	i := 0
 	pos := 0.0
 	paused := false
+	lastBar := ""
 
 	seek := func(t float64) {
 		if t < 0 {
@@ -99,6 +130,7 @@ func main() {
 			t = total
 		}
 		pos = t
+		lastBar = ""
 		fmt.Fprintf(out, "\x1bc\x1b[1;%dr\x1b[H", rows-2)
 		i = 0
 		for i < len(ev) && ev[i].t <= pos {
@@ -132,8 +164,12 @@ func main() {
 		if len(help) > cols {
 			help = help[:cols]
 		}
-		fmt.Fprintf(out, "\x1b7\x1b[%d;1H\x1b[2K\x1b[2m%s\x1b[0m\x1b[%d;1H\x1b[2K\x1b[7m %s %s [%s] %s \x1b[0m\x1b8",
+		s := fmt.Sprintf("\x1b7\x1b[%d;1H\x1b[2K\x1b[2m%s\x1b[0m\x1b[%d;1H\x1b[2K\x1b[7m %s %s [%s] %s \x1b[0m\x1b8",
 			rows-1, help, rows, icon, fmtT(pos), bar, fmtT(total))
+		if s != lastBar {
+			out.WriteString(s)
+			lastBar = s
+		}
 		out.Flush()
 	}
 
